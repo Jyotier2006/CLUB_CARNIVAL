@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CODE BREAKOUT // Escape the System</title>
+<style>
+:root{
+  --bg:#04080a; --panel:#071410; --line:#0e2b20;
+  --grn:#00ff9c; --grn-dim:#0a5c40; --amb:#ffb020; --red:#ff3b5c; --cyn:#29d8ff;
+  --txt:#b8ffe3;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:"Cascadia Code","Fira Code","Consolas","Courier New",monospace;
+  overflow-x:hidden; position:relative;
+}
+#matrix{position:fixed;inset:0;z-index:0;opacity:.16}
+body::before{content:"";position:fixed;inset:0;z-index:50;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px);}
+body::after{content:"";position:fixed;inset:0;z-index:50;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%);}
+.wrap{position:relative;z-index:10;max-width:960px;margin:0 auto;padding:24px 16px 60px;min-height:100vh}
+
+.screen{display:none;animation:fadeIn .5s ease}
+.screen.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+.glitch{font-size:clamp(28px,6vw,56px);font-weight:700;color:var(--grn);
+  letter-spacing:4px;position:relative;text-shadow:0 0 18px rgba(0,255,156,.5)}
+.glitch::before,.glitch::after{content:attr(data-t);position:absolute;left:0;top:0;width:100%;overflow:hidden}
+.glitch::before{color:var(--cyn);clip-path:inset(20% 0 55% 0);animation:gl1 2.4s infinite linear alternate}
+.glitch::after{color:var(--red);clip-path:inset(60% 0 15% 0);animation:gl2 3.1s infinite linear alternate}
+@keyframes gl1{0%,92%{transform:none;opacity:0}94%{transform:translate(-4px,-2px);opacity:.8}98%{transform:translate(3px,1px);opacity:.8}100%{opacity:0}}
+@keyframes gl2{0%,90%{transform:none;opacity:0}93%{transform:translate(4px,2px);opacity:.8}97%{transform:translate(-3px,-1px);opacity:.8}100%{opacity:0}}
+
+.term{background:rgba(4,12,9,.92);border:1px solid var(--line);border-radius:8px;
+  padding:18px 20px;margin:22px 0;box-shadow:0 0 30px rgba(0,255,156,.07),inset 0 0 40px rgba(0,255,156,.03)}
+.term .bar{display:flex;gap:7px;margin-bottom:14px}
+.term .bar i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.term .bar i:nth-child(1){background:#ff5f56}.term .bar i:nth-child(2){background:#ffbd2e}.term .bar i:nth-child(3){background:#27c93f}
+.tline{white-space:pre-wrap;line-height:1.7;font-size:14px;color:var(--grn)}
+.cursor{display:inline-block;width:9px;height:16px;background:var(--grn);vertical-align:-2px;animation:blink .9s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+.btn{background:transparent;color:var(--grn);border:1px solid var(--grn);
+  font-family:inherit;font-size:15px;letter-spacing:2px;padding:12px 28px;cursor:pointer;
+  border-radius:4px;position:relative;overflow:hidden;transition:.25s;text-transform:uppercase}
+.btn:hover{background:var(--grn);color:#02120b;box-shadow:0 0 24px rgba(0,255,156,.6);transform:translateY(-2px)}
+.btn:active{transform:scale(.97)}
+.btn.amber{color:var(--amb);border-color:var(--amb)}
+.btn.amber:hover{background:var(--amb);color:#1a1000;box-shadow:0 0 24px rgba(255,176,32,.6)}
+.btn.cyan{color:var(--cyn);border-color:var(--cyn);font-size:12px;padding:9px 16px}
+.btn.cyan:hover{background:var(--cyn);color:#001a22;box-shadow:0 0 20px rgba(41,216,255,.55)}
+.btn:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
+.btn:disabled:hover{background:transparent;color:inherit}
+
+#hud{display:none;position:sticky;top:0;z-index:40;background:rgba(4,10,8,.9);backdrop-filter:blur(6px);
+  border:1px solid var(--line);border-radius:8px;padding:10px 16px;margin-bottom:20px;
+  justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+#hud.on{display:flex}
+.hud-item{font-size:12px;letter-spacing:1px;color:#6fe7b7}
+.hud-item b{color:var(--grn);font-size:16px;text-shadow:0 0 10px rgba(0,255,156,.5)}
+.hud-item.warn b{color:var(--amb)}
+.hud-item.cy b{color:var(--cyn);text-shadow:0 0 10px rgba(41,216,255,.5)}
+#lvlDots{display:flex;gap:6px}
+#lvlDots i{width:10px;height:10px;border-radius:2px;background:var(--line);transition:.4s}
+#lvlDots i.done{background:var(--grn);box-shadow:0 0 8px var(--grn)}
+#lvlDots i.cur{background:var(--amb);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 12px var(--amb)}}
+
+.panel{background:rgba(7,20,16,.9);border:1px solid var(--line);border-radius:10px;padding:22px;margin:18px 0;
+  box-shadow:0 8px 40px rgba(0,0,0,.45);position:relative}
+/* corner brackets */
+.panel::before,.panel::after{content:"";position:absolute;width:22px;height:22px;border:2px solid var(--grn);opacity:.6}
+.panel::before{top:-2px;left:-2px;border-right:none;border-bottom:none;border-radius:8px 0 0 0}
+.panel::after{bottom:-2px;right:-2px;border-left:none;border-top:none;border-radius:0 0 8px 0}
+
+h2.lvl{color:var(--amb);letter-spacing:3px;font-size:clamp(17px,3.2vw,24px);margin-bottom:4px}
+.sub{color:#57b88f;font-size:13px;margin-bottom:14px;letter-spacing:1px}
+
+/* mission briefing */
+.brief{border:1px dashed var(--cyn);border-radius:8px;padding:14px 16px;margin:0 0 16px;
+  background:rgba(41,216,255,.05);font-size:13px;line-height:1.8;color:#a9ecff;
+  animation:briefGlow 3s ease-in-out infinite}
+@keyframes briefGlow{50%{box-shadow:0 0 18px rgba(41,216,255,.18)}}
+.brief b{color:var(--cyn)}
+.brief .tag{display:inline-block;background:rgba(41,216,255,.15);border-radius:3px;padding:1px 8px;
+  font-size:11px;letter-spacing:2px;color:var(--cyn);margin-bottom:6px}
+
+/* question header row */
+.qhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
+.qtag{font-size:11px;letter-spacing:2px;color:var(--cyn);border:1px solid rgba(41,216,255,.4);
+  border-radius:3px;padding:3px 10px;background:rgba(41,216,255,.07)}
+
+pre.code{background:#02100a;border:1px solid var(--line);border-left:3px solid var(--grn);
+  padding:16px;border-radius:6px;overflow-x:auto;font-size:14px;line-height:1.7;color:#c9ffe9;margin:12px 0}
+pre.code .k{color:var(--cyn)} pre.code .s{color:var(--amb)} pre.code .c{color:#4d7a66;font-style:italic}
+pre.code .bug{color:var(--red);text-shadow:0 0 8px rgba(255,59,92,.6)}
+.ansrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+input.ans{flex:1;min-width:200px;background:#02100a;border:1px solid var(--grn-dim);color:var(--grn);
+  font-family:inherit;font-size:15px;padding:12px 14px;border-radius:4px;letter-spacing:1px;outline:none;transition:.2s}
+input.ans:focus{border-color:var(--grn);box-shadow:0 0 16px rgba(0,255,156,.25)}
+.msg{min-height:22px;margin-top:10px;font-size:14px;letter-spacing:1px}
+.msg.ok{color:var(--grn)} .msg.bad{color:var(--red)} .msg.cy{color:var(--cyn)}
+.shake{animation:shake .4s}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.flash-ok{animation:flok .7s}
+@keyframes flok{0%{box-shadow:0 0 0 rgba(0,255,156,0)}30%{box-shadow:0 0 60px rgba(0,255,156,.55)}100%{box-shadow:0 8px 40px rgba(0,0,0,.45)}}
+.swapin{animation:swapin .45s ease}
+@keyframes swapin{0%{opacity:0;transform:translateX(30px) skewX(-6deg);filter:blur(3px)}100%{opacity:1;transform:none;filter:none}}
+
+.langs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:16px}
+.lang{border:1px solid var(--line);border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:.25s;background:rgba(2,16,10,.6)}
+.lang:hover{border-color:var(--grn);transform:translateY(-4px);box-shadow:0 10px 26px rgba(0,255,156,.15)}
+.lang .ico{font-size:32px;margin-bottom:8px}
+.lang h3{color:var(--grn);letter-spacing:2px;font-size:15px}
+.lang p{color:#57b88f;font-size:11px;margin-top:6px}
+.lang.rand{border-style:dashed;border-color:var(--cyn)}
+.lang.rand h3{color:var(--cyn)}
+
+.hints{margin-top:18px;border-top:1px dashed var(--line);padding-top:14px}
+.hints h4{color:var(--amb);font-size:13px;letter-spacing:2px;margin-bottom:10px}
+.hintbtns{display:flex;gap:10px;flex-wrap:wrap}
+.hintbtn{border:1px solid var(--amb);color:var(--amb);background:transparent;font-family:inherit;
+  padding:8px 14px;font-size:12px;border-radius:4px;cursor:pointer;letter-spacing:1px;transition:.2s}
+.hintbtn:hover{background:rgba(255,176,32,.12)}
+.hintbtn.used{border-color:var(--grn-dim);color:#4d7a66;cursor:default}
+.hintbox{display:none;margin-top:12px;background:rgba(255,176,32,.06);border:1px solid rgba(255,176,32,.35);
+  border-radius:6px;padding:14px;font-size:13px;line-height:1.7;animation:fadeIn .4s}
+.hintbox.show{display:block}
+table.btab{border-collapse:collapse;margin-top:8px;font-size:12px;width:100%}
+table.btab th,table.btab td{border:1px solid rgba(255,176,32,.3);padding:4px 8px;text-align:center;color:#ffd98a}
+table.btab th{background:rgba(255,176,32,.12)}
+
+#doorlay{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(2,6,5,.94)}
+#doorlay.show{display:flex}
+.lock{width:130px;height:150px;position:relative}
+.lock .body{position:absolute;bottom:0;width:130px;height:92px;background:linear-gradient(#0d3326,#062015);
+  border:2px solid var(--grn);border-radius:10px;box-shadow:0 0 30px rgba(0,255,156,.35)}
+.lock .hole{position:absolute;bottom:32px;left:56px;width:18px;height:30px;background:var(--grn);
+  clip-path:polygon(50% 0,100% 30%,80% 30%,80% 100%,20% 100%,20% 30%,0 30%);filter:drop-shadow(0 0 8px var(--grn))}
+.lock .shk{position:absolute;top:0;left:24px;width:82px;height:78px;border:12px solid var(--grn);
+  border-bottom:none;border-radius:44px 44px 0 0;transition:transform 1s cubic-bezier(.6,-0.4,.4,1.4);transform-origin:12px 72px}
+.lock.open .shk{transform:rotate(-42deg) translateY(-8px)}
+#doortext{margin-top:26px;color:var(--grn);letter-spacing:4px;font-size:16px;text-align:center;text-shadow:0 0 14px rgba(0,255,156,.6)}
+
+#finale .big{font-size:clamp(30px,7vw,64px);color:var(--grn);text-align:center;letter-spacing:6px;
+  text-shadow:0 0 30px rgba(0,255,156,.7);animation:pulse 1.6s infinite}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:26px 0}
+.stat{border:1px solid var(--line);border-radius:8px;padding:18px;text-align:center;background:rgba(2,16,10,.7)}
+.stat b{display:block;font-size:24px;color:var(--grn);text-shadow:0 0 12px rgba(0,255,156,.5)}
+.stat span{font-size:11px;color:#57b88f;letter-spacing:2px}
+.rank{color:var(--amb);text-align:center;font-size:19px;letter-spacing:3px;margin:8px 0 22px;text-shadow:0 0 14px rgba(255,176,32,.6)}
+.center{text-align:center}
+.decode-badge{display:inline-block;border:1px dashed var(--cyn);color:var(--cyn);padding:6px 14px;border-radius:4px;
+  font-size:13px;letter-spacing:2px;margin:8px 0}
+.emorow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;
+  padding:14px;margin:10px 0;background:rgba(2,16,10,.6)}
+.binline{border-left-color:var(--cyn)!important;text-align:center;font-size:17px;letter-spacing:3px;color:var(--cyn)!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+
+<div class="wrap">
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-item">⏱ TIME <b id="hTime">00:00</b></div>
+    <div class="hud-item">◆ SCORE <b id="hScore">0</b></div>
+    <div class="hud-item">▼ LEVEL VALUE <b id="hVal">--</b></div>
+    <div class="hud-item warn">⚠ HINTS <b id="hHints">0</b></div>
+    <div class="hud-item cy">⇄ SWAPS <b id="hSwaps">0</b></div>
+    <div id="lvlDots"><i id="d1"></i><i id="d2"></i><i id="d3"></i></div>
+  </div>
+
+  <!-- ============ INTRO ============ -->
+  <section id="intro" class="screen active">
+    <div class="center" style="margin-top:6vh">
+      <h1 class="glitch" data-t="CODE BREAKOUT">CODE BREAKOUT</h1>
+      <p style="color:#57b88f;letter-spacing:3px;margin-top:10px;font-size:13px">// A CODING ESCAPE ROOM //</p>
+    </div>
+    <div class="term">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="tline" id="bootText"></div>
+    </div>
+    <div class="center">
+      <button class="btn" id="startBtn" style="display:none" onclick="startGame()">▶ INITIATE BREACH</button>
+    </div>
+  </section>
+
+  <!-- ============ LEVEL 1 PICK ============ -->
+  <section id="lv1pick" class="screen">
+    <div class="panel">
+      <h2 class="lvl">▣ LEVEL 1 — THE FIREWALL BUG</h2>
+      <div class="brief">
+        <span class="tag">MISSION BRIEFING</span><br>
+        Listen up, operator 🕵️ — the firewall runs on code written by an intern at 3 AM ☕🌙.
+        Somewhere in it hides <b>ONE broken line</b>. Read the script, spot the sabotage, and type the <b>corrected line</b> to short-circuit the door.<br>
+        😰 Stuck? Burn a <b>HINT</b> (costs points). 🙄 Hate your question? Hit <b>⇄ SWAP</b> for a fresh one (−30 pts, 10 questions in the deck).
+        ⏳ And hustle — the reward melts 2 pts every second!
+      </div>
+      <p class="sub">Choose your weapon — each language hides its own flavour of bug:</p>
+      <div class="langs">
+        <div class="lang" onclick="pickLang('py')"><div class="ico">🐍</div><h3>PYTHON</h3><p>logic bites softly</p></div>
+        <div class="lang" onclick="pickLang('js')"><div class="ico">⚡</div><h3>JAVASCRIPT</h3><p>chaos in braces</p></div>
+        <div class="lang" onclick="pickLang('cpp')"><div class="ico">🛠</div><h3>C++</h3><p>one char = doom</p></div>
+        <div class="lang" onclick="pickLang('c')"><div class="ico">⚙️</div><h3>C</h3><p>close to the metal</p></div>
+        <div class="lang" onclick="pickLang('java')"><div class="ico">☕</div><h3>JAVA</h3><p>objects that lie</p></div>
+        <div class="lang rand" onclick="pickLang('any')"><div class="ico">🎲</div><h3>SURPRISE ME</h3><p>random from all 10</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LEVEL 1 ============ -->
+  <section id="lv1" class="screen">
+    <div class="panel" id="p1">
+      <h2 class="lvl">▣ LEVEL 1 — DEBUG TO UNLOCK</h2>
+      <div class="qhead">
+        <span class="qtag" id="l1tag"></span>
+        <button class="btn cyan" id="l1swap" onclick="swap1()">⇄ SWAP QUESTION (−30)</button>
+      </div>
+      <div id="l1body">
+        <p class="sub" id="l1sub"></p>
+        <pre class="code" id="l1code"></pre>
+        <p style="font-size:13px;color:#6fe7b7" id="l1q"></p>
+      </div>
+      <div class="ansrow">
+        <input class="ans" id="l1ans" placeholder="type the corrected line…" autocomplete="off">
+        <button class="btn" onclick="check1()">EXECUTE</button>
+      </div>
+      <div class="msg" id="l1msg"></div>
+      <div class="hints">
+        <h4>⚠ HINT TERMINAL — each hint burns points</h4>
+        <div class="hintbtns" id="l1hbtns"></div>
+        <div class="hintbox" id="l1hbox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LEVEL 2 ============ -->
+  <section id="lv2" class="screen">
+    <div class="panel" id="p2">
+      <h2 class="lvl">▣ LEVEL 2 — THE BINARY VAULT</h2>
+      <div class="brief">
+        <span class="tag">MISSION BRIEFING</span><br>
+        The vault doesn't speak human 🤖 — it hums in <b>pure binary</b>. Below is a 3-character transmission:
+        each 8-bit block is one <b>ASCII uppercase letter</b>. Translate all three, whisper the word back, and the vault swings open.<br>
+        🧮 No idea how binary works? The <b>hints</b> include the method, a full <b>binary table</b>, even a worked example.
+        🙄 Word feels cursed? <b>⇄ SWAP</b> the transmission (−30 pts). ⏳ Tick-tock — value is draining!
+      </div>
+      <div class="qhead">
+        <span class="qtag" id="l2tag"></span>
+        <button class="btn cyan" id="l2swap" onclick="swap2()">⇄ SWAP QUESTION (−30)</button>
+      </div>
+      <pre class="code binline" id="l2bin"></pre>
+      <p style="font-size:13px;color:#6fe7b7">≫ Each 8-bit block is one ASCII character. What word is transmitted?</p>
+      <div class="ansrow">
+        <input class="ans" id="l2ans" placeholder="decoded word…" autocomplete="off">
+        <button class="btn" onclick="check2()">DECRYPT</button>
+      </div>
+      <div class="msg" id="l2msg"></div>
+      <div class="hints">
+        <h4>⚠ HINT TERMINAL — each hint burns points</h4>
+        <div class="hintbtns" id="l2hbtns"></div>
+        <div class="hintbox" id="l2hbox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LEVEL 3A — EMOJI CIPHER WALL ============ -->
+  <section id="lv3a" class="screen">
+    <div class="panel" id="p3a">
+      <h2 class="lvl">▣ LEVEL 3 — PHASE 1: EMOJI CIPHER WALL</h2>
+      <div class="brief">
+        <span class="tag">MISSION BRIEFING</span><br>
+        The gatekeeper is a Gen-Z AI 😎 — it locked the final gate behind <b>emoji riddles</b>.
+        Each picture combo = one famous tech term or meme. Crack <b>all 3</b> to melt the wall.<br>
+        🙄 A riddle giving you nothing? Every row has its own <b>⇄</b> button — swap that single cipher for a new one from the 10-deck (−30 pts each).
+        💡 Hints exist too, if pride allows. GO GO GO 🏃💨
+      </div>
+      <div id="emoRows"></div>
+      <div class="msg" id="l3amsg"></div>
+      <div class="hints">
+        <h4>⚠ HINT TERMINAL — each hint burns points</h4>
+        <div class="hintbtns" id="l3ahbtns"></div>
+        <div class="hintbox" id="l3ahbox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LEVEL 3B — FINAL GATE ============ -->
+  <section id="lv3" class="screen">
+    <div class="panel" id="p3">
+      <h2 class="lvl">▣ LEVEL 3 — PHASE 2: THE FINAL GATE</h2>
+      <div class="brief">
+        <span class="tag">MISSION BRIEFING</span><br>
+        Last door. Two ciphers fused into one password 🔐:<br>
+        <b>①</b> The gatekeeper's script below <i>should</i> reverse its secret string — but the bug means it doesn't. Fix it in your head 🧠 and figure out the true output.<br>
+        <b>②</b> Glue that output to the <b>word you decoded from binary in Level 2</b> (yes, it mattered! 😏).<br>
+        Type the fused password — one word, no spaces. 🙄 Script too spicy? <b>⇄ SWAP</b> deals a new secret string (−30). This is it, operator. Make the mainframe cry. 😈
+      </div>
+      <div class="qhead">
+        <span class="qtag" id="l3tag"></span>
+        <button class="btn cyan" id="l3swap" onclick="swap3()">⇄ SWAP QUESTION (−30)</button>
+      </div>
+      <pre class="code" id="l3code"></pre>
+      <p style="font-size:13px;color:#6fe7b7;line-height:1.8" id="l3steps"></p>
+      <div class="ansrow">
+        <input class="ans" id="l3ans" placeholder="OUTPUT + LEVEL-2 WORD…" autocomplete="off">
+        <button class="btn" onclick="check3()">BREACH GATE</button>
+      </div>
+      <div class="msg" id="l3msg"></div>
+      <div class="hints">
+        <h4>⚠ HINT TERMINAL — each hint burns points</h4>
+        <div class="hintbtns" id="l3hbtns"></div>
+        <div class="hintbox" id="l3hbox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FINALE ============ -->
+  <section id="finale" class="screen">
+    <div style="margin-top:5vh" class="center">
+      <div class="big glitch" data-t="SYSTEM BREACHED">SYSTEM BREACHED</div>
+      <p class="decode-badge" id="badge"></p>
+    </div>
+    <div class="rank" id="rank"></div>
+    <div class="stats">
+      <div class="stat"><b id="fScore">0</b><span>FINAL SCORE</span></div>
+      <div class="stat"><b id="fTime">--</b><span>TOTAL TIME</span></div>
+      <div class="stat"><b id="fHints">0</b><span>HINTS USED</span></div>
+      <div class="stat"><b id="fSwaps">0</b><span>SWAPS USED</span></div>
+      <div class="stat"><b id="fTries">0</b><span>WRONG TRIES</span></div>
+    </div>
+    <div class="center">
+      <button class="btn" onclick="location.reload()">⟳ RUN AGAIN — NEW RANDOM QUESTIONS</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- lock overlay -->
+<div id="doorlay">
+  <div class="center">
+    <div class="lock" id="lock">
+      <div class="shk"></div>
+      <div class="body"><div class="hole"></div></div>
+    </div>
+    <div id="doortext">DECRYPTING…</div>
+  </div>
+</div>
+
+<script>
+/* ================= matrix rain ================= */
+const cv=document.getElementById('matrix'),cx=cv.getContext('2d');
+let cols,drops;const CH="01アイウエオカキクケコサシスセソ<>/{}[]=+*#";
+function sizeM(){cv.width=innerWidth;cv.height=innerHeight;cols=Math.floor(cv.width/16);drops=Array(cols).fill(1);}
+sizeM();addEventListener('resize',sizeM);
+setInterval(()=>{cx.fillStyle='rgba(4,8,10,.09)';cx.fillRect(0,0,cv.width,cv.height);
+  cx.fillStyle='#00ff9c';cx.font='14px monospace';
+  drops.forEach((y,i)=>{cx.fillText(CH[Math.random()*CH.length|0],i*16,y*16);
+    if(y*16>cv.height&&Math.random()>.975)drops[i]=0;drops[i]++;});},50);
+
+/* ================= state & helpers ================= */
+const S={score:0,hints:0,tries:0,swaps:0,t0:0,timer:null,lvlBase:0,lvlT0:null,l2word:null};
+const $=id=>document.getElementById(id);
+const SWAP_COST=30;
+function fmt(s){const m=String(Math.floor(s/60)).padStart(2,'0'),x=String(s%60).padStart(2,'0');return m+":"+x;}
+function tick(){$('hTime').textContent=fmt(Math.floor((Date.now()-S.t0)/1000));if(S.lvlT0)updVal();}
+function addScore(n){S.score=Math.max(0,S.score+n);$('hScore').textContent=S.score;}
+function startLevel(base){S.lvlBase=base;S.lvlT0=Date.now();updVal();}
+function curVal(){const el=Math.floor((Date.now()-S.lvlT0)/1000);
+  return Math.max(Math.floor(S.lvlBase*0.4),S.lvlBase-2*el);}
+function updVal(){$('hVal').textContent=curVal();}
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');window.scrollTo({top:0,behavior:'smooth'});}
+function setDots(cur){['d1','d2','d3'].forEach((d,i)=>{const e=$(d);e.className='';if(i+1<cur)e.className='done';if(i+1===cur)e.className='cur';});}
+const norm=s=>s.toLowerCase().replace(/\s+/g,'').replace(/;$/,'');
+const pickRand=arr=>arr[Math.random()*arr.length|0];
+function paySwap(){S.swaps++;$('hSwaps').textContent=S.swaps;addScore(-SWAP_COST);}
+function swapAnim(id){const e=$(id);e.classList.remove('swapin');void e.offsetWidth;e.classList.add('swapin');}
+
+/* ================= boot typing ================= */
+const bootLines=[
+"> connecting to node 10.66.0.7 ......... OK",
+"> bypassing perimeter .................. OK",
+"> WARNING: you are locked inside the mainframe.",
+"> three security layers detected:",
+"    [1] FIREWALL BUG   — debug the corrupted script",
+"    [2] BINARY VAULT   — decode the machine whisper",
+"    [3] FINAL GATE     — emoji cipher wall + fuse both keys",
+"> each layer draws a RANDOM question from a 10-question deck",
+"> don't like yours? SWAP it  (−30 pts per swap)",
+"> hints cost points · wrong tries cost 25 · rewards decay 2/sec",
+"> good luck, operator. you'll need it. _"];
+let li=0,ci=0;
+function typeBoot(){
+  const el=$('bootText');
+  if(li<bootLines.length){
+    const line=bootLines[li];
+    if(ci<=line.length){el.innerHTML=bootLines.slice(0,li).join("\n")+(li?"\n":"")+line.slice(0,ci)+'<span class="cursor"></span>';ci++;setTimeout(typeBoot,12);}
+    else{li++;ci=0;setTimeout(typeBoot,120);}
+  }else{el.innerHTML=bootLines.join("\n");$('startBtn').style.display='inline-block';}
+}
+typeBoot();
+
+/* ================= flow ================= */
+function startGame(){
+  S.t0=Date.now();S.timer=setInterval(tick,500);
+  $('hud').classList.add('on');setDots(1);show('lv1pick');
+}
+function doorAnim(txt,next){
+  const lay=$('doorlay'),lk=$('lock');lay.classList.add('show');lk.classList.remove('open');
+  $('doortext').textContent='DECRYPTING…';
+  setTimeout(()=>{lk.classList.add('open');$('doortext').textContent=txt;},700);
+  setTimeout(()=>{lay.classList.remove('show');next();},2100);
+}
+function wrong(inp,msg,panel){
+  S.tries++;addScore(-25);
+  $(msg).className='msg bad';$(msg).textContent='✖ ACCESS DENIED — wrong answer (-25 pts)';
+  $(panel).classList.remove('shake');void $(panel).offsetWidth;$(panel).classList.add('shake');
+  $(inp).select();
+}
+function right(msg,panel,pts){
+  addScore(pts);
+  $(msg).className='msg ok';$(msg).textContent='✔ ACCESS GRANTED (+'+pts+' pts)';
+  $(panel).classList.add('flash-ok');
+}
+
+/* ================= hints engine ================= */
+function buildHints(btnWrap,box,hints){
+  const w=$(btnWrap);w.innerHTML='';
+  const bx=$(box);bx.innerHTML='';bx.classList.remove('show');
+  hints.forEach((h,i)=>{
+    const b=document.createElement('button');b.className='hintbtn';
+    b.textContent='HINT '+(i+1)+'  (−'+h.cost+' pts)';
+    b.onclick=()=>{if(b.classList.contains('used'))return;
+      b.classList.add('used');b.textContent='HINT '+(i+1)+' ✓ OPENED';
+      S.hints++;$('hHints').textContent=S.hints;addScore(-h.cost);
+      bx.classList.add('show');
+      bx.innerHTML+=(bx.innerHTML?'<hr style="border:none;border-top:1px dashed rgba(255,176,32,.3);margin:10px 0">':'')+'<b style="color:var(--amb)">HINT '+(i+1)+':</b> '+h.text;};
+    w.appendChild(b);});
+}
+
+/* =================================================
+   LEVEL 1 — DECK OF 10 DEBUGGING QUESTIONS
+   ================================================= */
+const L1POOL=[
+{k:'py',lang:'PYTHON 🐍',sub:"This function must return the SUM of the list, but it returns garbage.",
+ code:`<span class="k">def</span> sum_list(nums):
+    total = 0
+    <span class="k">for</span> n <span class="k">in</span> nums:
+        <span class="bug">total = n</span>        <span class="c"># &lt;-- line 4</span>
+    <span class="k">return</span> total
+
+<span class="k">print</span>(sum_list([4, 8, 15, 16]))   <span class="c"># expected 43, got 16</span>`,
+ q:"≫ Rewrite line 4 so the function actually sums the list.",
+ ok:a=>a.includes('total+=n')||a.includes('total=total+n')||a.includes('total=n+total'),
+ hints:[{cost:50,text:"Watch what happens to <b>total</b> each pass — accumulating, or being replaced?"},
+        {cost:75,text:"You need to <i>add</i> n onto total. Python has an 'add and assign' shorthand."},
+        {cost:100,text:"Use <b>+=</b> : total += n"}]},
+{k:'py',lang:'PYTHON 🐍',sub:"This function must return the BIGGEST number, but it always returns the first one.",
+ code:`<span class="k">def</span> biggest(nums):
+    big = nums[0]
+    <span class="k">for</span> n <span class="k">in</span> nums:
+        <span class="k">if</span> n &gt; big:
+            <span class="bug">big == n</span>       <span class="c"># &lt;-- line 5</span>
+    <span class="k">return</span> big
+
+<span class="k">print</span>(biggest([3, 9, 2]))   <span class="c"># expected 9, got 3</span>`,
+ q:"≫ Rewrite line 5 so big actually gets updated.",
+ ok:a=>a==='big=n'||a.includes('big=n')&&!a.includes('=='),
+ hints:[{cost:50,text:"Line 5 <i>compares</i> big and n… then throws the result in the bin. Nothing is stored."},
+        {cost:75,text:"== asks a question. You need the symbol that <i>assigns</i> a value."},
+        {cost:100,text:"A single <b>=</b> : big = n"}]},
+{k:'js',lang:'JAVASCRIPT ⚡',sub:"This loop should print every element, but it crashes with 'undefined'.",
+ code:`<span class="k">const</span> arr = [<span class="s">"alpha"</span>, <span class="s">"beta"</span>, <span class="s">"gamma"</span>];
+<span class="k">for</span> (<span class="k">let</span> i = 0; <span class="bug">i &lt;= arr.length</span>; i++) {   <span class="c">// &lt;-- condition</span>
+  console.log(arr[i].toUpperCase());
+}`,
+ q:"≫ Rewrite the loop condition so it never reads past the array.",
+ ok:a=>a.includes('i<arr.length')&&!a.includes('<='),
+ hints:[{cost:50,text:"arr.length is 3, but valid indexes are 0, 1, 2. What does the last pass touch?"},
+        {cost:75,text:"<b>&lt;=</b> lets i reach 3 → arr[3] is undefined. One character is the culprit."},
+        {cost:100,text:"Change <b>&lt;=</b> to <b>&lt;</b> : i &lt; arr.length"}]},
+{k:'js',lang:'JAVASCRIPT ⚡',sub:"This loop should stop when ready is false… but it spins FOREVER.",
+ code:`<span class="k">let</span> ready = <span class="k">false</span>;
+<span class="k">while</span> (<span class="bug">ready = true</span>) {      <span class="c">// &lt;-- condition</span>
+  spinFans();                <span class="c">// runs infinitely!</span>
+}`,
+ q:"≫ Rewrite the condition so it COMPARES instead of assigns.",
+ ok:a=>a.includes('ready==true')||a.includes('ready===true'),
+ hints:[{cost:50,text:"That condition isn't checking ready — it's <i>setting</i> it. Every. Single. Loop."},
+        {cost:75,text:"A single = assigns true (truthy) → eternal loop. Comparison needs more equals signs."},
+        {cost:100,text:"Use <b>===</b> : ready === true"}]},
+{k:'cpp',lang:'C++ 🛠',sub:"This check should trigger only when x equals 5, but it fires every single time.",
+ code:`<span class="k">int</span> x = 3;
+<span class="k">if</span> (<span class="bug">x = 5</span>) {              <span class="c">// &lt;-- condition</span>
+    std::cout &lt;&lt; <span class="s">"DOOR OPEN"</span>;
+}`,
+ q:"≫ Rewrite the condition so it COMPARES instead of what it currently does.",
+ ok:a=>a.includes('x==5')||a.includes('5==x'),
+ hints:[{cost:50,text:"That condition isn't asking a question — it's <i>doing</i> something to x."},
+        {cost:75,text:"x = 5 assigns 5 (truthy) so the if always runs. Comparison needs a doubled symbol."},
+        {cost:100,text:"Use <b>==</b> : x == 5"}]},
+{k:'cpp',lang:'C++ 🛠',sub:"3 and 4 should average to 3.5 — but this prints 3. The decimals vanished!",
+ code:`<span class="k">int</span> a = 3, b = 4;
+<span class="k">double</span> avg = <span class="bug">(a + b) / 2</span>;    <span class="c">// &lt;-- the math</span>
+std::cout &lt;&lt; avg;             <span class="c">// prints 3 ?!</span>`,
+ q:"≫ Rewrite the math so the division keeps its decimals.",
+ ok:a=>a.includes('2.0')||a.includes('(double)'),
+ hints:[{cost:50,text:"int ÷ int in C++ throws away the remainder BEFORE the double ever sees it."},
+        {cost:75,text:"Make at least one side of the division a floating-point value."},
+        {cost:100,text:"Divide by <b>2.0</b> : (a + b) / 2.0"}]},
+{k:'c',lang:'C ⚙️',sub:"This loop should print 0 to 4, but it runs forever and floods the terminal.",
+ code:`<span class="k">int</span> i;
+<span class="k">for</span> (i = 0; i &lt; 5; <span class="bug">i--</span>) {     <span class="c">/* &lt;-- update step */</span>
+    printf(<span class="s">"%d\\n"</span>, i);
+}`,
+ q:"≫ Rewrite the update step so the loop terminates.",
+ ok:a=>a.includes('i++')||a.includes('++i')||a.includes('i=i+1')||a.includes('i+=1'),
+ hints:[{cost:50,text:"Trace i: 0, −1, −2, −3… will it ever reach 5 going that way?"},
+        {cost:75,text:"The loop must count <i>up</i> toward 5. Flip the direction of the update."},
+        {cost:100,text:"Change <b>i--</b> to <b>i++</b>"}]},
+{k:'c',lang:'C ⚙️',sub:"Reading the user's age crashes the whole program with a segfault. Classic C.",
+ code:`<span class="k">int</span> age;
+printf(<span class="s">"Enter age: "</span>);
+scanf(<span class="s">"%d"</span>, <span class="bug">age</span>);     <span class="c">/* &lt;-- CRASH here */</span>`,
+ q:"≫ Rewrite the second argument of scanf so it stops crashing.",
+ ok:a=>a.includes('&age'),
+ hints:[{cost:50,text:"scanf needs to know WHERE to put the number — not the number itself."},
+        {cost:75,text:"You must pass the <i>address</i> of age. C has an operator that takes an address."},
+        {cost:100,text:"Add the ampersand: <b>&age</b>"}]},
+{k:'java',lang:'JAVA ☕',sub:"The correct password is typed, yet access is always denied.",
+ code:`String pass = scanner.nextLine();   <span class="c">// user typed "admin"</span>
+<span class="k">if</span> (<span class="bug">pass == "admin"</span>) {          <span class="c">// &lt;-- condition</span>
+    System.out.println(<span class="s">"ACCESS"</span>);
+}`,
+ q:"≫ Rewrite the condition so it compares the string CONTENTS.",
+ ok:a=>a.includes('equals'),
+ hints:[{cost:50,text:"In Java, == on objects compares memory addresses, not what's inside."},
+        {cost:75,text:"Strings carry a method that checks whether the characters match."},
+        {cost:100,text:"Use <b>pass.equals(\"admin\")</b>"}]},
+{k:'java',lang:'JAVA ☕',sub:"Printing the LAST snack crashes with ArrayIndexOutOfBounds. Rude.",
+ code:`<span class="k">int</span>[] snacks = {5, 10, 15};
+System.out.println(<span class="bug">snacks[3]</span>);   <span class="c">// &lt;-- CRASH: wants the last one</span>`,
+ q:"≫ Rewrite the array access so it prints the last element (15).",
+ ok:a=>a.includes('snacks[2]')||a.includes('snacks[snacks.length-1]'),
+ hints:[{cost:50,text:"The array has 3 elements. Where does Java start counting from?"},
+        {cost:75,text:"Indexes run 0, 1, 2. Index 3 is off the edge of the world."},
+        {cost:100,text:"Use <b>snacks[2]</b> (or snacks[snacks.length - 1])."}]}
+];
+let l1Avail=L1POOL.map((_,i)=>i),l1Cur=null;
+
+function loadL1(i){
+  l1Cur=i;l1Avail=l1Avail.filter(x=>x!==i);
+  const d=L1POOL[i];
+  $('l1tag').textContent='Q-DECK '+(i+1)+'/10 · '+d.lang;
+  $('l1sub').textContent=d.sub;$('l1code').innerHTML=d.code;$('l1q').textContent=d.q;
+  buildHints('l1hbtns','l1hbox',d.hints);
+  $('l1ans').value='';$('l1msg').textContent='';
+  $('l1swap').disabled=l1Avail.length===0;
+  swapAnim('l1body');
+}
+function pickLang(k){
+  const cand=l1Avail.filter(i=>k==='any'||L1POOL[i].k===k);
+  loadL1(pickRand(cand.length?cand:l1Avail));
+  startLevel(600);show('lv1');$('l1ans').focus();
+}
+function swap1(){
+  if(!l1Avail.length)return;
+  paySwap();loadL1(pickRand(l1Avail));
+  $('l1msg').className='msg cy';$('l1msg').textContent='⇄ QUESTION SWAPPED (−'+SWAP_COST+' pts) — '+l1Avail.length+' left in deck';
+  $('l1ans').focus();
+}
+function check1(){
+  const a=norm($('l1ans').value);if(!a)return;
+  if(L1POOL[l1Cur].ok(a)){right('l1msg','p1',curVal());
+    setTimeout(()=>doorAnim('LAYER 1 BREACHED → BINARY VAULT',()=>{setDots(2);startLevel(600);loadL2(pickRand(l2Avail));show('lv2');$('l2ans').focus();}),600);}
+  else wrong('l1ans','l1msg','p1');
+}
+
+/* =================================================
+   LEVEL 2 — DECK OF 10 BINARY WORDS
+   ================================================= */
+const L2WORDS=["KEY","CPU","RAM","BIT","NET","FOX","ICE","JET","OWL","SUN"];
+const L2CLUE={KEY:"it opens locks in the real world too — rhymes with 'they'",
+ CPU:"the brain chip of every computer — three famous letters",
+ RAM:"fast memory that forgets when power dies — also a horned animal",
+ BIT:"the smallest unit of data — a tiny piece of something",
+ NET:"short for the thing you're probably using right now",
+ FOX:"a clever orange animal — also half of a famous browser",
+ ICE:"frozen water — coders 'break' it at parties",
+ JET:"a very fast plane — often followed by 'lag'",
+ OWL:"the bird that codes at night, just like you",
+ SUN:"the star your screen is fighting against right now"};
+const toBin=w=>[...w].map(c=>c.charCodeAt(0).toString(2).padStart(8,'0')).join('  ');
+let l2Avail=L2WORDS.map((_,i)=>i),l2Cur=null;
+
+function l2Hints(){
+  const w=L2WORDS[l2Cur],b0=toBin(w).split('  ')[0];
+  const bits=[...b0].map((x,i)=>x==='1'?128>>i:0).filter(Boolean);
+  return [
+   {cost:50,text:"Convert each 8-bit block to decimal first. Bit values left→right: <b>128, 64, 32, 16, 8, 4, 2, 1</b> — add the values where a 1 appears. Then decimal → ASCII letter."},
+   {cost:75,text:`The reference table — decimal → ASCII uppercase letters:
+    <table class="btab"><tr><th>Binary</th><th>Dec</th><th>Char</th><th>Binary</th><th>Dec</th><th>Char</th></tr>
+    <tr><td>01000001</td><td>65</td><td>A</td><td>01001110</td><td>78</td><td>N</td></tr>
+    <tr><td>01000010</td><td>66</td><td>B</td><td>01001111</td><td>79</td><td>O</td></tr>
+    <tr><td>01000011</td><td>67</td><td>C</td><td>01010000</td><td>80</td><td>P</td></tr>
+    <tr><td>01000100</td><td>68</td><td>D</td><td>01010001</td><td>81</td><td>Q</td></tr>
+    <tr><td>01000101</td><td>69</td><td>E</td><td>01010010</td><td>82</td><td>R</td></tr>
+    <tr><td>01000110</td><td>70</td><td>F</td><td>01010011</td><td>83</td><td>S</td></tr>
+    <tr><td>01000111</td><td>71</td><td>G</td><td>01010100</td><td>84</td><td>T</td></tr>
+    <tr><td>01001000</td><td>72</td><td>H</td><td>01010101</td><td>85</td><td>U</td></tr>
+    <tr><td>01001001</td><td>73</td><td>I</td><td>01010110</td><td>86</td><td>V</td></tr>
+    <tr><td>01001010</td><td>74</td><td>J</td><td>01010111</td><td>87</td><td>W</td></tr>
+    <tr><td>01001011</td><td>75</td><td>K</td><td>01011000</td><td>88</td><td>X</td></tr>
+    <tr><td>01001100</td><td>76</td><td>L</td><td>01011001</td><td>89</td><td>Y</td></tr>
+    <tr><td>01001101</td><td>77</td><td>M</td><td>01011010</td><td>90</td><td>Z</td></tr></table>`},
+   {cost:75,text:`Worked example — your first block <b>${b0}</b>: the 1s sit at ${bits.join(', ')} → ${bits.join('+')} = <b>${w.charCodeAt(0)}</b> → ASCII ${w.charCodeAt(0)} = <b>${w[0]}</b>. Two blocks to go.`},
+   {cost:100,text:`Riddle time 🧩 : ${L2CLUE[w]}. Pattern: <b>${w[0]} _ _</b>`}
+  ];
+}
+function loadL2(i){
+  l2Cur=i;l2Avail=l2Avail.filter(x=>x!==i);
+  $('l2tag').textContent='TRANSMISSION '+(i+1)+'/10';
+  $('l2bin').textContent=toBin(L2WORDS[i]);
+  buildHints('l2hbtns','l2hbox',l2Hints());
+  $('l2ans').value='';$('l2msg').textContent='';
+  $('l2swap').disabled=l2Avail.length===0;
+  swapAnim('l2bin');
+}
+function swap2(){
+  if(!l2Avail.length)return;
+  paySwap();loadL2(pickRand(l2Avail));
+  $('l2msg').className='msg cy';$('l2msg').textContent='⇄ NEW TRANSMISSION INTERCEPTED (−'+SWAP_COST+' pts) — '+l2Avail.length+' left';
+  $('l2ans').focus();
+}
+function check2(){
+  const a=norm($('l2ans').value);if(!a)return;
+  if(a===L2WORDS[l2Cur].toLowerCase()){
+    S.l2word=L2WORDS[l2Cur];right('l2msg','p2',curVal());
+    setTimeout(()=>doorAnim('LAYER 2 BREACHED → EMOJI CIPHER WALL',()=>{setDots(3);startLevel(450);initEmo();show('lv3a');}),600);}
+  else wrong('l2ans','l2msg','p2');
+}
+
+/* =================================================
+   LEVEL 3A — DECK OF 10 EMOJI CIPHERS (solve any 3)
+   ================================================= */
+const EMOPOOL=[
+ {e:"🔥 + 🧱",ph:"it guards a network",ok:a=>a.includes('firewall')},
+ {e:"♾️ + 🔁",ph:"a coder's nightmare that never stops",ok:a=>a.includes('infiniteloop')},
+ {e:"🦆 + 🗣️ + 💻",ph:"explaining your bugs to a bath toy (first two words)",ok:a=>a.includes('rubberduck')},
+ {e:"🍝 + 💻",ph:"tangled, messy code has a food name",ok:a=>a.includes('spaghetti')},
+ {e:"🥞 + 🥞 + 💻",ph:"a dev who does frontend AND backend",ok:a=>a.includes('fullstack')},
+ {e:"🐛 + 🔨",ph:"the eternal war of every programmer",ok:a=>a.includes('debug')},
+ {e:"📋 + 📋",ph:"the true engine of the software industry",ok:a=>a.includes('copypaste')||a.includes('copyandpaste')},
+ {e:"🧠 + 404",ph:"error message for an empty head",ok:a=>a.includes('brainnotfound')},
+ {e:"🎣 + 📧",ph:"a scam that fishes for your password",ok:a=>a.includes('phishing')},
+ {e:"🤖 + 🧠",ph:"the tech everyone won't stop talking about",ok:a=>a==='ai'||a.includes('artificialintelligence')}
+];
+let emoAvail=[],emoSlot=[null,null,null],emoSolved=0;
+
+function initEmo(){
+  emoAvail=EMOPOOL.map((_,i)=>i);emoSolved=0;
+  const w=$('emoRows');w.innerHTML='';
+  for(let s=0;s<3;s++){
+    const row=document.createElement('div');row.className='emorow';row.id='emorow'+s;
+    row.innerHTML=`<span style="font-size:30px;min-width:130px;text-align:center" id="emoE${s}"></span>
+      <input class="ans" id="emo${s}" placeholder="decode…" autocomplete="off" style="min-width:150px">
+      <button class="btn" style="padding:10px 16px" onclick="checkEmo(${s})">✓</button>
+      <button class="btn cyan" id="emoSw${s}" onclick="swapEmo(${s})" title="swap this cipher">⇄ −30</button>
+      <span id="emoSt${s}" style="min-width:26px;font-size:20px"></span>
+      <span style="font-size:11px;color:#57b88f;flex-basis:100%" id="emoP${s}"></span>`;
+    w.appendChild(row);
+    dealEmo(s);
+    $('emo'+s).addEventListener('keydown',e=>{if(e.key==='Enter')checkEmo(s);});
+  }
+  buildHints('l3ahbtns','l3ahbox',[
+   {cost:40,text:"Read each combo literally, then say it out loud like a movie title. 🔥+🧱 isn't 'hot brick' — it's the thing that BLOCKS."},
+   {cost:40,text:"All 10 answers in the deck are famous programming terms & memes: think firewalls, loops, ducks, pasta, pancakes, bugs, clipboards, 404s, fishing, robots…"},
+   {cost:60,text:"Direct decode of YOUR current top cipher: read its clue again — the answer is the most famous tech phrase containing that clue's keyword. If it shows a duck 🦆, the answer starts with what ducks are made of in bathtubs."}
+  ]);
+  $('l3amsg').textContent='';
+}
+function dealEmo(s){
+  const i=pickRand(emoAvail);emoAvail=emoAvail.filter(x=>x!==i);
+  emoSlot[s]=i;
+  $('emoE'+s).textContent=EMOPOOL[i].e;
+  $('emoP'+s).textContent='clue: '+EMOPOOL[i].ph;
+  $('emo'+s).value='';$('emo'+s).disabled=false;
+  $('emoSt'+s).textContent='';
+  $('emoSw'+s).disabled=emoAvail.length===0;
+  swapAnim('emorow'+s);
+}
+function swapEmo(s){
+  if(!emoAvail.length||$('emoSt'+s).textContent==='✔')return;
+  paySwap();dealEmo(s);
+  $('l3amsg').className='msg cy';$('l3amsg').textContent='⇄ CIPHER SWAPPED (−'+SWAP_COST+' pts) — '+emoAvail.length+' left in deck';
+  if(!emoAvail.length)[0,1,2].forEach(x=>$('emoSw'+x).disabled=true);
+}
+function checkEmo(s){
+  const inp=$('emo'+s),st=$('emoSt'+s);
+  if(st.textContent==='✔')return;
+  const a=norm(inp.value);if(!a)return;
+  if(EMOPOOL[emoSlot[s]].ok(a)){
+    const pts=Math.max(60,Math.floor(curVal()/3));addScore(pts);
+    st.textContent='✔';st.style.color='var(--grn)';inp.disabled=true;$('emoSw'+s).disabled=true;
+    $('l3amsg').className='msg ok';$('l3amsg').textContent='✔ CIPHER CRACKED (+'+pts+' pts)';
+    if(++emoSolved===3){
+      setTimeout(()=>doorAnim('CIPHER WALL DOWN → THE FINAL GATE',()=>{startLevel(700);loadL3(pickRand(l3Avail));show('lv3');$('l3ans').focus();}),600);
+    }
+  }else{
+    S.tries++;addScore(-25);
+    st.textContent='✖';st.style.color='var(--red)';
+    $('l3amsg').className='msg bad';$('l3amsg').textContent='✖ CIPHER REJECTED (-25 pts)';
+    $('p3a').classList.remove('shake');void $('p3a').offsetWidth;$('p3a').classList.add('shake');
+    inp.select();setTimeout(()=>{if(st.textContent==='✖')st.textContent='';},1200);
+  }
+}
+
+/* =================================================
+   LEVEL 3B — DECK OF 10 DIFFERENT GATE PROGRAMS
+   each has its own bug, its own logic, its own output word
+   ================================================= */
+const L3POOL=[
+{name:"REVERSE LOOP",out:"ESCAPE",
+ code:`<span class="c"># the gate should REVERSE its secret string</span>
+<span class="k">def</span> gate(word):
+    out = <span class="s">""</span>
+    <span class="k">for</span> ch <span class="k">in</span> word:
+        <span class="bug">out = out + ch</span>   <span class="c"># &lt;-- BUG: this does NOT reverse</span>
+    <span class="k">return</span> out
+
+<span class="k">print</span>(gate(<span class="s">"EPACSE"</span>))`,
+ task:`fix the loop so it truly reverses <span style="color:var(--amb)">"EPACSE"</span>`,
+ hints:[{cost:60,text:"To reverse while looping, each new character must be placed <i>in front of</i> what's built so far."},
+        {cost:80,text:"Fix is <b>out = ch + out</b>. It builds: E → PE → APE → CAPE → SCAPE → …"},
+        {cost:100,text:"Output = <b>ESCAPE</b>."}]},
+
+{name:"LEET DECODER",out:"LOGIN",
+ code:`<span class="c"># the gate should un-leet the string (0→O, 1→I)</span>
+swap = {<span class="s">"0"</span>: <span class="s">"O"</span>, <span class="s">"1"</span>: <span class="s">"I"</span>}
+out = <span class="s">""</span>
+<span class="k">for</span> ch <span class="k">in</span> <span class="s">"L0G1N"</span>:
+    <span class="bug">out += ch</span>          <span class="c"># &lt;-- BUG: never uses the swap map</span>
+<span class="k">print</span>(out)`,
+ task:`fix it so every digit is replaced using the <b>swap</b> map`,
+ hints:[{cost:60,text:"The loop copies each character unchanged — the swap dictionary is decoration right now."},
+        {cost:80,text:"Fix: <b>out += swap.get(ch, ch)</b> — replace if the char is in the map, else keep it."},
+        {cost:100,text:"L0G1N → 0 becomes O, 1 becomes I → output = <b>LOGIN</b>."}]},
+
+{name:"CAESAR SHIFT",out:"ROOT",
+ code:`<span class="c"># each letter was shifted FORWARD by 1. Undo it.</span>
+out = <span class="s">""</span>
+<span class="k">for</span> ch <span class="k">in</span> <span class="s">"SPPU"</span>:
+    <span class="bug">out += chr(ord(ch) + 1)</span>   <span class="c"># &lt;-- BUG: shifts the wrong way</span>
+<span class="k">print</span>(out)`,
+ task:`fix the shift direction to decode <span style="color:var(--amb)">"SPPU"</span>`,
+ hints:[{cost:60,text:"The cipher moved letters forward. To undo a forward move you go… backward."},
+        {cost:80,text:"Fix: <b>ord(ch) - 1</b>. So S→R, P→O, P→O, U→T."},
+        {cost:100,text:"Output = <b>ROOT</b>."}]},
+
+{name:"EVERY SECOND CHAR",out:"HACK",
+ code:`<span class="c"># junk letter X was inserted after every real letter</span>
+secret = <span class="s">"HXAXCXK"</span>
+<span class="bug">print(secret[::1])</span>       <span class="c"># &lt;-- BUG: keeps everything</span>`,
+ task:`fix the slice so only every 2nd character survives`,
+ hints:[{cost:60,text:"Python slicing is [start:stop:<b>step</b>]. A step of 1 keeps every character."},
+        {cost:80,text:"Fix: <b>secret[::2]</b> — start at 0, take every second char: H, A, C, K."},
+        {cost:100,text:"Output = <b>HACK</b>."}]},
+
+{name:"ACRONYM BUILDER",out:"BREACH",
+ code:`<span class="c"># build an acronym from the FIRST letter of each word</span>
+words = [<span class="s">"Binary"</span>, <span class="s">"Route"</span>, <span class="s">"Exit"</span>, <span class="s">"Alert"</span>, <span class="s">"Cache"</span>, <span class="s">"Host"</span>]
+out = <span class="s">""</span>
+<span class="k">for</span> w <span class="k">in</span> words:
+    <span class="bug">out += w[-1]</span>        <span class="c"># &lt;-- BUG: grabs the LAST letter</span>
+<span class="k">print</span>(out.upper())`,
+ task:`fix it to take the first letter of each word`,
+ hints:[{cost:60,text:"w[-1] is the last character. Which index is the first?"},
+        {cost:80,text:"Fix: <b>out += w[0]</b> → B, R, E, A, C, H."},
+        {cost:100,text:"Output = <b>BREACH</b>."}]},
+
+{name:"DIGIT STRIPPER",out:"UNLOCK",
+ code:`<span class="c"># remove every digit from the noisy string</span>
+out = <span class="s">""</span>
+<span class="k">for</span> ch <span class="k">in</span> <span class="s">"U1N2L3O4C5K"</span>:
+    <span class="bug">if ch.isdigit():</span>   <span class="c"># &lt;-- BUG: keeps the wrong half</span>
+        out += ch
+<span class="k">print</span>(out)`,
+ task:`fix the condition so digits are dropped, letters kept`,
+ hints:[{cost:60,text:"Right now it collects ONLY the digits — the exact opposite of the goal."},
+        {cost:80,text:"Fix: <b>if not ch.isdigit():</b> (or use ch.isalpha())."},
+        {cost:100,text:"Output = <b>UNLOCK</b>."}]},
+
+{name:"REVERSED JOIN",out:"PORTAL",
+ code:`<span class="c"># the fragments were stored back-to-front</span>
+parts = [<span class="s">"TAL"</span>, <span class="s">"POR"</span>]
+<span class="bug">print("".join(parts))</span>   <span class="c"># &lt;-- BUG: prints TALPOR</span>`,
+ task:`fix the join so the fragments come out in the right order`,
+ hints:[{cost:60,text:"The list itself is stored backwards. Flip the list before joining."},
+        {cost:80,text:"Fix: <b>\"\".join(parts[::-1])</b> → POR + TAL."},
+        {cost:100,text:"Output = <b>PORTAL</b>."}]},
+
+{name:"DUPLICATE CRUSHER",out:"MATRIX",
+ code:`<span class="c"># every letter got typed twice. Squash the repeats.</span>
+out = <span class="s">""</span>
+<span class="k">for</span> ch <span class="k">in</span> <span class="s">"MMAATTRRIIXX"</span>:
+    <span class="bug">out += ch</span>          <span class="c"># &lt;-- BUG: never checks for repeats</span>
+<span class="k">print</span>(out)`,
+ task:`fix it so a letter is skipped when it repeats the previous one`,
+ hints:[{cost:60,text:"You need to compare each character with the last one you already added."},
+        {cost:80,text:"Fix: <b>if out == \"\" or ch != out[-1]: out += ch</b>."},
+        {cost:100,text:"MMAATTRRIIXX squashes to <b>MATRIX</b>."}]},
+
+{name:"SLICE THE PREFIX",out:"ACCESS",
+ code:`<span class="c"># keep only the first 6 characters</span>
+tag = <span class="s">"ACCESSDENIED"</span>
+<span class="bug">print(tag[6:])</span>          <span class="c"># &lt;-- BUG: prints the wrong half</span>`,
+ task:`fix the slice so it keeps the first 6 characters`,
+ hints:[{cost:60,text:"tag[6:] means 'from index 6 to the end' — that's the tail, not the head."},
+        {cost:80,text:"Fix: <b>tag[:6]</b> — from the start up to index 6."},
+        {cost:100,text:"Output = <b>ACCESS</b>."}]},
+
+{name:"CASE CONVERTER",out:"EXIT",
+ code:`<span class="c"># the sign must be SHOUTED in capitals</span>
+sign = <span class="s">"eXiT"</span>
+<span class="bug">print(sign.lower())</span>     <span class="c"># &lt;-- BUG: whispers instead</span>`,
+ task:`fix the method so the whole word is uppercase`,
+ hints:[{cost:60,text:"lower() pushes everything down. There is an obvious opposite method."},
+        {cost:80,text:"Fix: <b>sign.upper()</b>."},
+        {cost:100,text:"Output = <b>EXIT</b>."}]}
+];
+let l3Avail=L3POOL.map((_,i)=>i),l3Cur=null;
+
+function loadL3(i){
+  l3Cur=i;l3Avail=l3Avail.filter(x=>x!==i);
+  const d=L3POOL[i];
+  $('l3tag').textContent='GATE PROGRAM '+(i+1)+'/10 · '+d.name;
+  $('l3code').innerHTML=d.code;
+  $('l3steps').innerHTML=`≫ Step 1: ${d.task}.<br>
+≫ Step 2: work out what the FIXED program prints.<br>
+≫ Step 3: append the word you decoded from binary in Level 2 (you solved: <b style="color:var(--cyn)">${S.l2word}</b>).<br>
+≫ Enter the fused password — one word, no spaces.`;
+  buildHints('l3hbtns','l3hbox',d.hints.concat([{cost:100,text:`Password = fixed output + your Level-2 word, glued together: <b>${d.out} + ${S.l2word}</b>`}]));
+  $('l3ans').value='';$('l3msg').textContent='';
+  $('l3swap').disabled=l3Avail.length===0;
+  swapAnim('l3code');
+}
+function swap3(){
+  if(!l3Avail.length)return;
+  paySwap();loadL3(pickRand(l3Avail));
+  $('l3msg').className='msg cy';$('l3msg').textContent='⇄ NEW GATE PROGRAM LOADED (−'+SWAP_COST+' pts) — '+l3Avail.length+' left in deck';
+  $('l3ans').focus();
+}
+function check3(){
+  const a=norm($('l3ans').value);if(!a)return;
+  const want=(L3POOL[l3Cur].out+S.l2word).toLowerCase();
+  if(a===want){right('l3msg','p3',curVal());
+    setTimeout(()=>doorAnim('ALL LAYERS DOWN — EXIT FOUND',finish),700);}
+  else wrong('l3ans','l3msg','p3');
+}
+
+
+/* ================= finale ================= */
+function finish(){
+  clearInterval(S.timer);S.lvlT0=null;$('hVal').textContent='—';
+  const secs=Math.floor((Date.now()-S.t0)/1000);
+  const timeBonus=Math.max(0,300-secs);addScore(timeBonus);
+  $('badge').textContent='ACCESS KEY ACCEPTED :: '+L3POOL[l3Cur].out+S.l2word;
+  $('fScore').textContent=S.score;$('fTime').textContent=fmt(secs);
+  $('fHints').textContent=S.hints;$('fSwaps').textContent=S.swaps;$('fTries').textContent=S.tries;
+  let r;
+  if(S.score>=2200)r="⚡ ELITE GHOST — flawless breach";
+  else if(S.score>=1600)r="◆ CYBER OPERATIVE — clean work";
+  else if(S.score>=1000)r="▣ CODE RUNNER — solid escape";
+  else r="… SCRIPT KIDDIE — but hey, you escaped";
+  $('rank').textContent="RANK: "+r+(timeBonus?("   (+"+timeBonus+" speed bonus)"):"");
+  ['d1','d2','d3'].forEach(d=>$(d).className='done');
+  show('finale');rainBurst();
+}
+function rainBurst(){
+  for(let i=0;i<90;i++){
+    const e=document.createElement('span');
+    e.textContent=Math.random()>.5?'1':'0';
+    e.style.cssText=`position:fixed;z-index:90;color:#00ff9c;font-family:monospace;font-size:${12+Math.random()*16}px;
+      left:${Math.random()*100}vw;top:-30px;pointer-events:none;text-shadow:0 0 8px #00ff9c;
+      transition:transform ${2+Math.random()*2}s linear,opacity 2.5s`;
+    document.body.appendChild(e);
+    requestAnimationFrame(()=>{e.style.transform=`translateY(${innerHeight+80}px) rotate(${Math.random()*360}deg)`;e.style.opacity=0;});
+    setTimeout(()=>e.remove(),4200);
+  }
+}
+
+/* enter-key submit */
+[['l1ans',check1],['l2ans',check2],['l3ans',check3]].forEach(([id,fn])=>{
+  $(id).addEventListener('keydown',e=>{if(e.key==='Enter')fn();});
+});
+</script>
+</body>
+</html>
